@@ -200,7 +200,7 @@
             <!-- [탭 X] 공지사항 게시판 -->
             <div id="tab-notices" class="tab-content hidden space-y-6">
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-                    <!-- 공지 작성 폼 (마스터만 표시되도록 JS 제어) -->
+                    <!-- 공지 작성 폼 -->
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 relative overflow-hidden" id="notice-write-panel">
                         <div class="absolute -right-10 -top-10 w-32 h-32 bg-emerald-50 rounded-full z-0"></div>
                         <div class="flex items-center justify-between mb-4 relative z-10">
@@ -405,9 +405,6 @@
                                 <button onclick="uploadExcelParticipants()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition active:scale-95 shadow whitespace-nowrap">업로드</button>
                             </div>
                             <p class="text-[10px] text-slate-400 mt-2 font-medium">※ 엑셀 첫 줄 헤더 명칭 필수: <br><span class="text-slate-500 font-bold">QR코드 식별키, 성명, 소속분과, 담당 직무, 연락처</span></p>
-                            <div class="mt-2 text-right">
-                                <button onclick="injectDemoData()" class="text-[10px] text-blue-500 font-bold hover:underline">테스트 데모 세팅</button>
-                            </div>
                         </div>
                     </div>
                     
@@ -881,14 +878,34 @@
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        // 🔥 하이브리드 환경 설정 (캔버스 테스트 + 외부 배포 모두 완벽 지원)
+        let firebaseConfig;
+        let targetAppId;
+
+        if (typeof __firebase_config !== 'undefined') {
+            // 1. 캔버스 내부 테스트 환경 (자동 주입)
+            firebaseConfig = JSON.parse(__firebase_config);
+            targetAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        } else {
+            // 2. 깃허브(GitHub) 등 외부 실제 배포 환경 (우진님 고유 키)
+            firebaseConfig = {
+              apiKey: "AIzaSyCLWiwC6dQbE8ZqcKXqFOq5GiX_QYg3R-4",
+              authDomain: "qr-system-26fa7.firebaseapp.com",
+              projectId: "qr-system-26fa7",
+              storageBucket: "qr-system-26fa7.firebasestorage.app",
+              messagingSenderId: "889935102360",
+              appId: "1:889935102360:web:53ed110db101472179abed"
+            };
+            targetAppId = "qr-system-26fa7";
+        }
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        
         let currentUserId = null;
 
-        // --- XSS(크로스 사이트 스크립팅) 보안 방어용 HTML 인코딩 ---
+        // XSS 방어용 인코딩 함수
         function escapeHTML(str) {
             if (str === null || str === undefined) return '';
             return String(str).replace(/[&<>'"]/g, tag => ({
@@ -898,11 +915,17 @@
 
         let eventsRef, participantsRef, attendanceRef, accountsRef, logsRef, noticesRef, settingsRef, qaRef;
 
+        // 🔥 로그인 시도 (캔버스 토큰 or 익명 로그인)
         async function initFirebaseAuth() {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth);
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Firebase 로그인 실패:", error);
+                alert("Firebase 로그인에 실패했습니다.\n\n[해결 방법]\nFirebase 콘솔 접속 -> Authentication(인증) -> Sign-in method(로그인 방법) 탭에서 '익명(Anonymous)'을 반드시 '사용 설정'으로 변경해 주세요!");
             }
         }
         initFirebaseAuth();
@@ -973,14 +996,14 @@
             if (user) {
                 currentUserId = user.uid;
                 
-                eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
-                participantsRef = collection(db, 'artifacts', appId, 'public', 'data', 'participants');
-                attendanceRef = collection(db, 'artifacts', appId, 'public', 'data', 'attendance');
-                accountsRef = collection(db, 'artifacts', appId, 'public', 'data', 'accounts');
-                logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
-                noticesRef = collection(db, 'artifacts', appId, 'public', 'data', 'notices');
-                settingsRef = collection(db, 'artifacts', appId, 'public', 'data', 'settings');
-                qaRef = collection(db, 'artifacts', appId, 'public', 'data', 'qa');
+                eventsRef = collection(db, 'artifacts', targetAppId, 'public', 'data', 'events');
+                participantsRef = collection(db, 'artifacts', targetAppId, 'public', 'data', 'participants');
+                attendanceRef = collection(db, 'artifacts', targetAppId, 'public', 'data', 'attendance');
+                accountsRef = collection(db, 'artifacts', targetAppId, 'public', 'data', 'accounts');
+                logsRef = collection(db, 'artifacts', targetAppId, 'public', 'data', 'logs');
+                noticesRef = collection(db, 'artifacts', targetAppId, 'public', 'data', 'notices');
+                settingsRef = collection(db, 'artifacts', targetAppId, 'public', 'data', 'settings');
+                qaRef = collection(db, 'artifacts', targetAppId, 'public', 'data', 'qa');
                 
                 loadFirestoreData();
             } else {
@@ -1910,7 +1933,6 @@
         function closeEventSelectModal() {
             document.getElementById('event-select-modal').classList.add('hidden');
         }
-
 
         // --- 참가자 사전 등록 관리 ---
         function refreshParticipantsInterface() {
