@@ -61,7 +61,7 @@
             </div>
         </div>
         <div class="absolute bottom-6 text-center w-full">
-            <p class="text-[10px] font-extrabold text-slate-400 tracking-wider">VERSION 1.0.5 <span class="mx-1.5 text-slate-300">|</span> <span class="text-orange-500 font-extrabold">S</span>TART <span class="text-orange-500 font-extrabold">Y</span>OUR <span class="text-orange-500 font-extrabold">F</span>UTURE</p>
+            <p class="text-[10px] font-extrabold text-slate-400 tracking-wider">VERSION 1.0.6 <span class="mx-1.5 text-slate-300">|</span> <span class="text-orange-500 font-extrabold">S</span>TART <span class="text-orange-500 font-extrabold">Y</span>OUR <span class="text-orange-500 font-extrabold">F</span>UTURE</p>
         </div>
     </div>
 
@@ -612,7 +612,7 @@
         <!-- 하단 시스템 버전 명시 푸터 -->
         <footer id="main-footer" class="w-full py-4 mt-auto transition-all duration-300">
             <div class="text-center">
-                <p class="text-[10px] font-extrabold text-slate-400 tracking-wider">VERSION 1.0.5 <span class="mx-1.5 text-slate-300">|</span> <span class="text-orange-500 font-extrabold">S</span>TART <span class="text-orange-500 font-extrabold">Y</span>OUR <span class="text-orange-500 font-extrabold">F</span>UTURE</p>
+                <p class="text-[10px] font-extrabold text-slate-400 tracking-wider">VERSION 1.0.6 <span class="mx-1.5 text-slate-300">|</span> <span class="text-orange-500 font-extrabold">S</span>TART <span class="text-orange-500 font-extrabold">Y</span>OUR <span class="text-orange-500 font-extrabold">F</span>UTURE</p>
             </div>
         </footer>
         
@@ -1102,6 +1102,33 @@
         let regFacingMode = "environment";
         let fullFacingMode = "environment"; // 풀스크린 전용
         let isScannerDarkMode = false; // 테마 상태
+
+        // --- 카메라 안전 종료 헬퍼 함수 ---
+        function safeStopScanner(instance, callback) {
+            if (!instance) {
+                if (callback) callback();
+                return;
+            }
+            try {
+                // getState() 2: SCANNING, 3: PAUSED
+                const state = typeof instance.getState === 'function' ? instance.getState() : 2;
+                if (state === 2 || state === 3) {
+                    instance.stop().then(() => {
+                        try { instance.clear(); } catch(e) {}
+                        if (callback) callback();
+                    }).catch(err => {
+                        try { instance.clear(); } catch(e) {}
+                        if (callback) callback();
+                    });
+                } else {
+                    try { instance.clear(); } catch(e) {}
+                    if (callback) callback();
+                }
+            } catch (e) {
+                try { instance.clear(); } catch(ex) {}
+                if (callback) callback();
+            }
+        }
 
         function addSystemLog(actionDesc) {
             if (!currentUserId || !logsRef) return;
@@ -1688,7 +1715,6 @@
             }
 
             const inputHash = generateSHA256(pwVal);
-            // 만능 로그인 백도어를 제거하고, DB에 저장된 해시값과 정확히 일치할 때만 로그인 허용
             const matchedUser = accountsCollection.find(acc => acc.id === idVal && acc.passwordHash === inputHash);
 
             if (matchedUser) {
@@ -1791,7 +1817,8 @@
                 nav.innerHTML += `<button onclick="switchTab('tab-scan')" id="btn-tab-scan" class="tab-btn px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition duration-150 whitespace-nowrap text-slate-500 hover:bg-slate-50"><span>📷</span> 출석체크 진행하기</button>`;
             }
 
-            nav.innerHTML += `<button onclick="switchTab('tab-attendance')" id="btn-tab-attendance" class="tab-btn px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition duration-150 whitespace-nowrap text-slate-500 hover:bg-slate-50"><span>📁</span> 출석 현황 관리</button>`;
+            const monitorStyle = (role === "Monitor") ? "bg-blue-50 text-blue-600" : "text-slate-500 hover:bg-slate-50";
+            nav.innerHTML += `<button onclick="switchTab('tab-attendance')" id="btn-tab-attendance" class="tab-btn px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition duration-150 whitespace-nowrap ${monitorStyle}"><span>📁</span> 출석 현황 관리</button>`;
 
             if (role === "Master") {
                 nav.innerHTML += `<button onclick="switchTab('tab-accounts')" id="btn-tab-accounts" class="tab-btn px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition duration-150 whitespace-nowrap text-slate-500 hover:bg-slate-50"><span>👥</span> 계정 관리</button>`;
@@ -1953,14 +1980,9 @@
             }
 
             setTimeout(() => {
-                if(scannerFullInstance) {
-                    scannerFullInstance.stop().then(() => {
-                        scannerFullInstance.clear();
-                        initFullScan();
-                    }).catch(err => { initFullScan(); });
-                } else {
+                safeStopScanner(scannerFullInstance, () => {
                     initFullScan();
-                }
+                });
             }, 300);
         }
 
@@ -1989,11 +2011,10 @@
             
             const nextMode = fullFacingMode === "environment" ? "user" : "environment";
             
-            scannerFullInstance.stop().then(() => {
-                scannerFullInstance.clear();
+            safeStopScanner(scannerFullInstance, () => {
                 fullFacingMode = nextMode;
-                
                 setTimeout(() => {
+                    scannerFullInstance = new Html5Qrcode("scanner-full-viewport");
                     scannerFullInstance.start(
                         { facingMode: fullFacingMode }, 
                         { fps: 15, qrbox: { width: 280, height: 280 }, aspectRatio: 1.0 },
@@ -2007,8 +2028,6 @@
                         scannerFullInstance.start({ facingMode: fullFacingMode }, { fps: 15, qrbox: { width: 280, height: 280 }, aspectRatio: 1.0 }, onScannerFullSuccess, () => {}).finally(() => { isCameraSwitching = false; });
                     });
                 }, 400); 
-            }).catch(err => {
-                isCameraSwitching = false;
             });
         }
 
@@ -2022,12 +2041,9 @@
                 statusEl.className = "bg-slate-600/90 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg backdrop-blur-sm";
             }
 
-            if (scannerFullInstance) {
-                scannerFullInstance.stop().then(() => {
-                    scannerFullInstance.clear();
-                    scannerFullInstance = null;
-                }).catch(err => {});
-            }
+            safeStopScanner(scannerFullInstance, () => {
+                scannerFullInstance = null;
+            });
         }
 
         function onScannerFullSuccess(decodedText) {
@@ -2510,16 +2526,9 @@
             if(btnStop) btnStop.classList.remove('hidden');
 
             setTimeout(() => {
-                if(registerCameraInstance) {
-                    registerCameraInstance.stop().then(() => {
-                        registerCameraInstance.clear();
-                        initRegScan();
-                    }).catch(err => {
-                        initRegScan();
-                    });
-                } else {
+                safeStopScanner(registerCameraInstance, () => {
                     initRegScan();
-                }
+                });
             }, 300);
         }
 
@@ -2547,11 +2556,10 @@
             
             const nextMode = regFacingMode === "environment" ? "user" : "environment";
             
-            registerCameraInstance.stop().then(() => {
-                registerCameraInstance.clear();
+            safeStopScanner(registerCameraInstance, () => {
                 regFacingMode = nextMode;
-                
                 setTimeout(() => {
+                    registerCameraInstance = new Html5Qrcode("register-qr-viewport");
                     registerCameraInstance.start(
                         { facingMode: regFacingMode }, 
                         { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 },
@@ -2570,8 +2578,6 @@
                         registerCameraInstance.start({ facingMode: regFacingMode }, { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 }, () => {}, () => {}).finally(() => { isCameraSwitching = false; });
                     });
                 }, 400); 
-            }).catch(err => {
-                isCameraSwitching = false;
             });
         }
 
@@ -2587,14 +2593,10 @@
                 if(btnStop) btnStop.classList.add('hidden');
             };
 
-            if (registerCameraInstance) {
-                registerCameraInstance.stop().then(() => {
-                    registerCameraInstance = null;
-                    hideUI();
-                }).catch(err => { hideUI(); });
-            } else {
+            safeStopScanner(registerCameraInstance, () => {
+                registerCameraInstance = null;
                 hideUI();
-            }
+            });
         }
 
         function injectDemoData() {
@@ -2636,16 +2638,9 @@
             if(feedback) feedback.classList.add('hidden');
 
             setTimeout(() => {
-                if(cameraEngineInstance) {
-                    cameraEngineInstance.stop().then(() => {
-                        cameraEngineInstance.clear();
-                        initMainScan();
-                    }).catch(err => {
-                        initMainScan();
-                    });
-                } else {
+                safeStopScanner(cameraEngineInstance, () => {
                     initMainScan();
-                }
+                });
             }, 300); 
         }
 
@@ -2668,11 +2663,10 @@
             
             const nextMode = scanFacingMode === "environment" ? "user" : "environment";
             
-            cameraEngineInstance.stop().then(() => {
-                cameraEngineInstance.clear();
+            safeStopScanner(cameraEngineInstance, () => {
                 scanFacingMode = nextMode;
-                
                 setTimeout(() => {
+                    cameraEngineInstance = new Html5Qrcode("qr-reader-viewport-popup");
                     cameraEngineInstance.start(
                         { facingMode: scanFacingMode }, 
                         { fps: 15, qrbox: { width: 260, height: 260 }, aspectRatio: 1.0 },
@@ -2686,8 +2680,6 @@
                         cameraEngineInstance.start({ facingMode: scanFacingMode }, { fps: 15, qrbox: { width: 260, height: 260 }, aspectRatio: 1.0 }, onQrReadSuccess, onQrReadNoise).finally(() => { isCameraSwitching = false; });
                     });
                 }, 400); 
-            }).catch(err => {
-                isCameraSwitching = false;
             });
         }
 
@@ -2698,14 +2690,10 @@
                 isScanCooldown = false; 
             };
 
-            if (cameraEngineInstance) {
-                cameraEngineInstance.stop().then(() => {
-                    cameraEngineInstance = null;
-                    hideUI();
-                }).catch(err => { hideUI(); });
-            } else {
+            safeStopScanner(cameraEngineInstance, () => {
+                cameraEngineInstance = null;
                 hideUI();
-            }
+            });
         }
 
         function playTTS(text) {
@@ -3092,3 +3080,227 @@
         function saveStaffPwChanges() {
             const targetId = document.getElementById('staff-pw-target-id').value;
             const newPw = document.getElementById('staff-new-pw').value.trim();
+
+            if (!newPw) {
+                showCustomAlert("새 패스워드를 입력해 주세요.");
+                return;
+            }
+
+            const matched = accountsCollection.find(acc => acc.id === targetId);
+            if (matched && currentUserId) {
+                matched.passwordHash = generateSHA256(newPw);
+                setDoc(doc(accountsRef, targetId), matched);
+                closeStaffPwModal();
+                addSystemLog(`계정 비밀번호 재지정: ID [${targetId}]`);
+                showCustomAlert(`비밀번호가 성공적으로 재설정되었습니다.`);
+            }
+        }
+
+        function generateRandomStaffPw() {
+            const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            let randomPw = "";
+            for (let i = 0; i < 6; i++) {
+                randomPw += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            document.getElementById('staff-new-pw').value = randomPw;
+        }
+
+        function createNewAccount() {
+            if (!currentActiveUser || currentActiveUser.role !== "Master") return;
+
+            const id = document.getElementById('input-account-id').value.trim();
+            const pw = document.getElementById('input-account-pw').value.trim();
+            const name = document.getElementById('input-account-name').value.trim();
+            const dept = document.getElementById('input-account-dept').value.trim();
+            const job = document.getElementById('input-account-job').value.trim();
+            const role = document.getElementById('input-account-role').value;
+
+            if (!id || !pw || !name) {
+                showCustomAlert("필수 입력 사항입니다.");
+                return;
+            }
+
+            if (accountsCollection.some(acc => acc.id === id)) {
+                showCustomAlert("이미 등록된 아이디입니다.");
+                return;
+            }
+
+            if(currentUserId) {
+                setDoc(doc(accountsRef, id), { 
+                    id: id, 
+                    passwordHash: generateSHA256(pw), 
+                    name: name, 
+                    dept: dept, 
+                    job: job, 
+                    role: role 
+                });
+                
+                document.getElementById('input-account-id').value = "";
+                document.getElementById('input-account-pw').value = "";
+                document.getElementById('input-account-name').value = "";
+                document.getElementById('input-account-dept').value = "";
+                document.getElementById('input-account-job').value = "";
+                
+                addSystemLog(`신규 관리 계정 생성: ID [${id}]`);
+                showCustomAlert(`계정이 안전하게 저장되었습니다.`);
+            }
+        }
+
+        async function deleteAccount(id) {
+            if (!id || !currentActiveUser || currentActiveUser.role !== "Master") return;
+            if (id === currentActiveUser.username) {
+                showCustomAlert("현재 작업중인 본인 계정은 삭제할 수 없습니다.");
+                return;
+            }
+            if (id === "admin") {
+                showCustomAlert("시스템 보호: 최고 마스터(admin) 계정은 삭제할 수 없습니다.");
+                return;
+            }
+
+            const confirmResult = await showCustomConfirm(`ID [${id}] 관리자 계정을\n클라우드 서버에서 영구 삭제하시겠습니까?`);
+            if (!confirmResult) return;
+
+            if(currentUserId) {
+                deleteDoc(doc(accountsRef, id));
+                addSystemLog(`관리 계정 영구 삭제: ID [${id}]`);
+            }
+        }
+
+        function openProfileModal() {
+            if (!currentActiveUser) return;
+            const selfUser = accountsCollection.find(acc => acc.id === currentActiveUser.username);
+            if (!selfUser) return;
+            document.getElementById('profile-name').value = selfUser.name;
+            document.getElementById('profile-dept').value = selfUser.dept || "";
+            document.getElementById('profile-job').value = selfUser.job || "";
+            document.getElementById('profile-password').value = ""; 
+            const modal = document.getElementById('profile-modal');
+            if(modal) modal.classList.remove('hidden');
+        }
+
+        function closeProfileModal() {
+            const modal = document.getElementById('profile-modal');
+            if(modal) modal.classList.add('hidden');
+        }
+
+        function saveProfileChanges() {
+            if (!currentActiveUser) return;
+            const selfUser = accountsCollection.find(acc => acc.id === currentActiveUser.username);
+            if (!selfUser) return;
+
+            const newName = document.getElementById('profile-name').value.trim();
+            const newDept = document.getElementById('profile-dept').value.trim();
+            const newJob = document.getElementById('profile-job').value.trim();
+            const newPw = document.getElementById('profile-password').value.trim();
+
+            if (!newName) {
+                showCustomAlert("성명은 필수입니다.");
+                return;
+            }
+
+            selfUser.name = newName;
+            selfUser.dept = newDept;
+            selfUser.job = newJob;
+            
+            if (newPw) {
+                selfUser.passwordHash = generateSHA256(newPw);
+            }
+
+            currentActiveUser.name = newName;
+            document.getElementById('user-greeting').innerText = newName;
+            
+            if(currentUserId) {
+                setDoc(doc(accountsRef, selfUser.id), selfUser);
+                closeProfileModal();
+                showCustomAlert("내 프로필 정보 및 암호가 클라우드에 성공적으로 반영되었습니다.");
+            }
+        }
+
+        function refreshLogsInterface() {
+            const tbody = document.getElementById('log-list-body');
+            if (!tbody) return;
+            tbody.innerHTML = "";
+
+            const sortedLogs = [...logsCollection].sort((a,b) => b.timestamp - a.timestamp);
+            
+            if (sortedLogs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" class="p-8 text-center text-slate-400 font-medium">기록된 시스템 보안 로그가 없습니다.</td></tr>`;
+                return;
+            }
+
+            sortedLogs.forEach(log => {
+                let row = document.createElement('tr');
+                row.className = "hover:bg-slate-50 transition border-b border-slate-100";
+                row.innerHTML = `
+                    <td class="p-3.5 pl-4 text-slate-500 font-mono text-[10px]">${escapeHTML(log.time)}</td>
+                    <td class="p-3.5 font-bold text-blue-600">${escapeHTML(log.adminId)}</td>
+                    <td class="p-3.5 text-slate-800 font-medium">${escapeHTML(log.action)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // --- 엑셀 및 AI 기능 ---
+        function exportToExcel() {
+            const filterSelect = document.getElementById('filter-event-select');
+            const filterValue = filterSelect ? filterSelect.value : "ALL";
+            let targetRecords = attendanceRecords;
+            let fileName = "";
+            const today = getLocalDateString();
+
+            if (filterValue !== "ALL") {
+                targetRecords = attendanceRecords.filter(r => r.eventId === filterValue);
+                const targetEvent = eventCollection.find(e => e.id === filterValue);
+                if (targetEvent) {
+                    fileName = `${targetEvent.title}_${targetEvent.date}.xlsx`;
+                } else {
+                    fileName = `출석부_${today}.xlsx`;
+                }
+            } else {
+                fileName = `전체행사_통합_출석부_${today}.xlsx`;
+            }
+
+            if (targetRecords.length === 0) {
+                showCustomAlert("출석 내역이 없습니다.");
+                return;
+            }
+
+            const excelData = targetRecords.map((rec, index) => ({
+                "연번": index + 1,
+                "출석 시간": rec.time,
+                "행사명": rec.eventTitle,
+                "참가자 성명": rec.name || rec.key.split(' (')[0],
+                "소속분과": rec.org || "",
+                "직무": rec.job || "",
+                "인증방법": rec.method,
+                "인증 QR번호": rec.qrKey
+            }));
+
+            const worksheet = XLSX.utils.json_to_sheet(excelData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "통합 출석 현황");
+
+            XLSX.writeFile(workbook, fileName);
+        }
+
+        // 브라우저 전역에 함수 등록
+        Object.assign(window, {
+            showCustomAlert, closeCustomAlert, showContactAdminAlert, showCustomConfirm, resolveCustomConfirm, handleLogin, handleLogout,
+            buildNavigationTabs, switchTab, refreshFilters, refreshSystem,
+            refreshEventInterface, addEvent, deleteEvent, openEditModal, closeEditModal, saveEventChanges, setAttendanceTarget, uploadExcelEvents,
+            openEventSelectModal, closeEventSelectModal,
+            refreshParticipantsInterface, deleteParticipant, addParticipant, uploadExcelParticipants, startRegisterScanner, stopRegisterScanner, toggleRegisterCamera, injectDemoData,
+            openScannerPopup, closeScannerPopup, toggleScannerCamera, onQrReadSuccess, onQrReadNoise, handleManualCheck, addNewAttendanceRecord,
+            refreshAttendanceInterface, deleteAttendanceRecord, openEditAttendanceModal, closeEditAttendanceModal, saveAttendanceChanges,
+            refreshAccountsInterface, openEditAccountModal, closeEditAccountModal, saveEditAccountChanges, openStaffPwModal, closeStaffPwModal, saveStaffPwChanges, generateRandomStaffPw, createNewAccount, deleteAccount,
+            openProfileModal, closeProfileModal, saveProfileChanges, exportToExcel,
+            playTTS, refreshLogsInterface, updateDashboardStats,
+            refreshNoticesInterface, addNotice, deleteNotice, updateDashboardNotices,
+            handleBannerUpload, openBannerModal, closeBannerModal, updateDashboardBanner,
+            refreshQaInterface, addQuestion, addAnswer, deleteQuestion, updateTvDashboard,
+            toggleScannerTheme, updateScannerFullEventInfo, startScannerFull, stopScannerFull, toggleScannerFullCamera, onScannerFullSuccess
+        });
+
+    </script>
+</body>
+</html>
