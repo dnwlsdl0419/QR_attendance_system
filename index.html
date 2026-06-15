@@ -61,7 +61,7 @@
             </div>
         </div>
         <div class="absolute bottom-6 text-center w-full">
-            <p class="text-[10px] font-extrabold text-slate-400 tracking-wider">VERSION 1.0.1 <span class="mx-1.5 text-slate-300">|</span> <span class="text-orange-500 font-extrabold">S</span>TART <span class="text-orange-500 font-extrabold">Y</span>OUR <span class="text-orange-500 font-extrabold">F</span>UTURE</p>
+            <p class="text-[10px] font-extrabold text-slate-400 tracking-wider">VERSION 1.0.3 <span class="mx-1.5 text-slate-300">|</span> <span class="text-orange-500 font-extrabold">S</span>TART <span class="text-orange-500 font-extrabold">Y</span>OUR <span class="text-orange-500 font-extrabold">F</span>UTURE</p>
         </div>
     </div>
 
@@ -612,7 +612,7 @@
         <!-- 하단 시스템 버전 명시 푸터 -->
         <footer id="main-footer" class="w-full py-4 mt-auto transition-all duration-300">
             <div class="text-center">
-                <p class="text-[10px] font-extrabold text-slate-400 tracking-wider">VERSION 1.0.1 <span class="mx-1.5 text-slate-300">|</span> <span class="text-orange-500 font-extrabold">S</span>TART <span class="text-orange-500 font-extrabold">Y</span>OUR <span class="text-orange-500 font-extrabold">F</span>UTURE</p>
+                <p class="text-[10px] font-extrabold text-slate-400 tracking-wider">VERSION 1.0.3 <span class="mx-1.5 text-slate-300">|</span> <span class="text-orange-500 font-extrabold">S</span>TART <span class="text-orange-500 font-extrabold">Y</span>OUR <span class="text-orange-500 font-extrabold">F</span>UTURE</p>
             </div>
         </footer>
         
@@ -925,7 +925,22 @@
                 }
             } catch (error) {
                 console.error("Firebase 로그인 실패:", error);
-                alert("Firebase 로그인에 실패했습니다.\n\n[해결 방법]\nFirebase 콘솔 접속 -> Authentication(인증) -> Sign-in method(로그인 방법) 탭에서 '익명(Anonymous)'을 반드시 '사용 설정'으로 변경해 주세요!");
+                // 기기 연동 실패 시 강력한 붉은색 에러 모달 띄우기
+                document.getElementById('login-container').innerHTML = `
+                    <div class="bg-rose-50 p-8 rounded-3xl shadow-xl w-full max-w-md border border-rose-200 text-center relative z-10">
+                        <div class="text-4xl mb-4">🚨</div>
+                        <h2 class="text-xl font-extrabold text-rose-600 mb-2">데이터베이스 연결 차단됨</h2>
+                        <p class="text-sm text-rose-500 font-bold mb-4">기기 간 데이터 연동을 위해 반드시 아래 설정을 켜주세요!</p>
+                        <ol class="text-xs text-left text-rose-700 bg-white p-4 rounded-xl space-y-2 font-medium shadow-sm border border-rose-100">
+                            <li>1. <b>Firebase 콘솔</b> 접속</li>
+                            <li>2. 왼쪽 메뉴에서 <b>Authentication (인증)</b> 클릭</li>
+                            <li>3. 상단 <b>Sign-in method (로그인 방법)</b> 탭 클릭</li>
+                            <li>4. 새 제공업체 추가 ➔ <b>'익명 (Anonymous)'</b> 선택</li>
+                            <li>5. <b>사용 설정 (Enable)</b> 스위치 켜기 ➔ 저장</li>
+                        </ol>
+                        <button onclick="location.reload()" class="mt-6 w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-rose-200 active:scale-95">설정 완료 후 새로고침</button>
+                    </div>
+                `;
             }
         }
         initFirebaseAuth();
@@ -1082,6 +1097,27 @@
         window.onload = function() {
             refreshFilters();
         };
+
+        // --- 백그라운드 UI 강제 새로고침 ---
+        function refreshSystemSilent() {
+            refreshEventInterface();
+            refreshParticipantsInterface();
+            refreshAttendanceInterface();
+            refreshAccountsInterface();
+            refreshLogsInterface();
+            refreshNoticesInterface();
+            refreshQaInterface();
+            refreshFilters();
+            updateDashboardStats();
+            updateDashboardNotices();
+            updateDashboardBanner();
+            updateTvDashboard();
+        }
+
+        function refreshSystem() {
+            refreshSystemSilent();
+            showCustomAlert("데이터가 안전하게 동기화(새로고침) 되었습니다.");
+        }
 
         // --- 대시보드 로직 ---
         function updateDashboardStats() {
@@ -1472,22 +1508,6 @@
         }
 
         // --- 공통 기능 ---
-        function refreshSystem() {
-            refreshEventInterface();
-            refreshParticipantsInterface();
-            refreshAttendanceInterface();
-            refreshAccountsInterface();
-            refreshLogsInterface();
-            refreshNoticesInterface();
-            refreshQaInterface();
-            refreshFilters();
-            updateDashboardStats();
-            updateDashboardNotices();
-            updateDashboardBanner();
-            updateTvDashboard();
-            showCustomAlert("데이터가 안전하게 동기화(새로고침) 되었습니다.");
-        }
-
         function showCustomAlert(message) {
             const alertModal = document.getElementById('custom-alert-modal');
             if(alertModal) {
@@ -1560,8 +1580,7 @@
                 
                 addSystemLog("시스템 로그인 접속");
                 buildNavigationTabs();
-                updateDashboardStats();
-                updateDashboardBanner();
+                refreshSystemSilent(); // 로그인 즉시 화면 권한 재조정
             } else {
                 showCustomAlert("아이디 또는 비밀번호를 확인해 주세요.");
             }
@@ -1796,11 +1815,9 @@
                     const location = row['행사장소'] || row['장소'] || "";
                     const memo = row['메모'] || row['설명'] || "";
 
-                    // YYMMDD -> YYYY-MM-DD 파싱
                     if (rawDate.length === 6 && !isNaN(rawDate)) {
                         rawDate = `20${rawDate.substring(0,2)}-${rawDate.substring(2,4)}-${rawDate.substring(4,6)}`;
                     }
-                    // HHMM -> HH:MM 파싱 (24시간제 자동 인식)
                     if (rawTime.length === 4 && !isNaN(rawTime)) {
                         rawTime = `${rawTime.substring(0,2)}:${rawTime.substring(2,4)}`;
                     }
